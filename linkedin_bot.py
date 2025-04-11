@@ -49,8 +49,19 @@ class LinkedInBot:
 
             username_input = self.wait.until(EC.presence_of_element_located((By.ID, "username")))
             self.logger.info("🔐 Logging into LinkedIn...")
+
             username_input.send_keys(email)
             self.driver.find_element(By.ID, "password").send_keys(password)
+
+            # ⛔ Uncheck 'Keep me signed in' checkbox if it's selected
+            try:
+                remember_checkbox = self.driver.find_element(By.ID, "rememberMeOptIn-checkbox")
+                if remember_checkbox.is_selected():
+                    self.driver.execute_script("arguments[0].click();", remember_checkbox)
+                    self.logger.info("☑️ Unchecked 'Keep me signed in' option.")
+            except Exception as e:
+                self.logger.warning(f"⚠️ Could not handle 'Keep me signed in' checkbox: {e}")
+
             self.driver.find_element(By.XPATH, "//button[@type='submit']").click()
             time.sleep(3)
 
@@ -163,21 +174,19 @@ class LinkedInBot:
             prompt = field["prompt"]
             elem = field["element"]
 
-            # TODO: Replace with Gemini logic
-            fake_value = "9876543210" if "phone" in prompt.lower() else "Test Answer"
+            # Placeholder: Use a dummy value or integrate Gemini API later.
+            fake_value = "8210301136" if "phone" in prompt.lower() else "Test Answer"
 
             try:
-                if tag == "input" or tag == "textarea":
+                if tag in ["input", "textarea"]:
                     elem.clear()
                     elem.send_keys(fake_value)
                 elif tag == "select":
-                    select = Select(elem)
-                    select.select_by_index(1)  # just selects first option (not ideal)
-                
-                self.logger.info(f"✍️ Autofilled: {prompt} with '{fake_value}'")
+                    Select(elem).select_by_index(1)  # Select first available option
+                self.logger.info(f"✍️ Autofilled field '{prompt}' with '{fake_value}'")
             except Exception as e:
-                self.logger.warning(f"⚠️ Could not autofill: {prompt} — {e}")
-
+                self.logger.warning(f"⚠️ Could not autofill field '{prompt}': {e}")
+                
     def check_required_fields(self):
         try:
             self.logger.info("🔍 Checking required fields in modal...")
@@ -233,34 +242,62 @@ class LinkedInBot:
         try:
             self.logger.info("📝 Handling Easy Apply modal...")
 
+            # Wait for the Easy Apply modal to appear.
             self.wait.until(EC.presence_of_element_located((By.CLASS_NAME, "jobs-easy-apply-modal")))
-            time.sleep(3)
+            time.sleep(3)  # Allow time for modal contents to render
 
-            # Step 1: Check required fields
+            # Check for required fields and autofill if needed.
             missing_fields, prompts = self.check_required_fields()
             if missing_fields:
-                self.logger.info("🔄 Attempting to autofill missing fields...")
+                self.logger.warning("❌ Required fields are empty; attempting to autofill them.")
                 self.autofill_required_fields(missing_fields)
 
-                # Step 2: Re-check after autofill
+                # Re-check after autofill
                 missing_fields, prompts = self.check_required_fields()
                 if missing_fields:
-                    self.logger.warning("❌ Still some required fields missing after autofill.")
                     for p in prompts:
                         self.logger.info(f"❓ Gemini Prompt: {p}")
+                    self.logger.warning("❌ Still missing required field values. Skipping job.")
                     return False
 
-            # Step 3: Try 'Continue to next step'
-            try:
-                next_btn = self.wait.until(
-                    EC.element_to_be_clickable((By.XPATH, "//button[@aria-label='Continue to next step']"))
-                )
-                next_btn.click()
-                self.logger.info("✅ Clicked 'Continue to next step'")
-                time.sleep(2)
-                return True
-            except TimeoutException:
-                # Step 4: Fallback to 'Submit'
+            # Step-through modal process
+            max_steps = 5
+            for step in range(max_steps):
+                try:
+                    # Click "Continue to next step" if available
+                    continue_btn = self.wait.until(
+                        EC.element_to_be_clickable((By.XPATH, "//button[@aria-label='Continue to next step']"))
+                    )
+                    continue_btn.click()
+                    self.logger.info(f"✅ Clicked 'Continue to next step' (Step {step+1})")
+                    time.sleep(2)
+                    continue  # Proceed to next iteration
+                except TimeoutException:
+                    self.logger.info("ℹ️ No 'Continue to next step' button found, checking for review/submit.")
+
+                # Try "Review your application"
+                try:
+                    review_btn = self.wait.until(
+                        EC.element_to_be_clickable((By.XPATH, "//button[@aria-label='Review your application']"))
+                    )
+                    review_btn.click()
+                    self.logger.info("✅ Clicked 'Review your application'")
+                    time.sleep(2)
+                    continue  # Proceed to find submit next
+                except TimeoutException:
+                    self.logger.debug("ℹ️ 'Review your application' button not found.")
+            
+                # Try unchecking follow-company-checkbox if present
+                try:
+                    follow_checkbox = self.driver.find_element(By.ID, "follow-company-checkbox")
+                    if follow_checkbox.is_selected():
+                        self.driver.execute_script("arguments[0].click();", follow_checkbox)
+                        self.logger.info("☑️ Unchecked 'Follow company' checkbox.")
+                except Exception:
+                    self.logger.debug("🔍 'Follow company' checkbox not found or not interactable.")
+
+
+                # Try final "Submit application"
                 try:
                     submit_btn = self.wait.until(
                         EC.element_to_be_clickable((By.XPATH, "//button[@aria-label='Submit application']"))
@@ -268,10 +305,13 @@ class LinkedInBot:
                     submit_btn.click()
                     self.logger.info("✅ Clicked 'Submit application'")
                     time.sleep(2)
-                    return True
+                    return True  # Success
                 except TimeoutException:
-                    self.logger.warning("⚠️ Neither 'Continue' nor 'Submit' button found.")
-                    return False
+                    self.logger.warning("⚠️ No 'Submit application' button found.")
+                    break  # Exit if none found
+
+            self.logger.warning("⚠️ Could not complete submission process after all steps.")
+            return False
 
         except TimeoutException:
             self.logger.warning("❌ No Easy Apply modal detected.")
@@ -279,7 +319,6 @@ class LinkedInBot:
             self.logger.error(f"⚠️ Could not complete modal handling: {e}")
 
         return False
-
 
 
 
