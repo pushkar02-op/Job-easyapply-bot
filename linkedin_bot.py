@@ -3,7 +3,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from webdriver_manager.chrome import ChromeDriverManager
@@ -157,27 +157,51 @@ class LinkedInBot:
             self.logger.warning(f"❌ Error extracting field prompt: {e}")
 
         return "Field information not found"
+    def autofill_required_fields(self, missing_fields: list):
+        for field in missing_fields:
+            tag = field["tag"]
+            prompt = field["prompt"]
+            elem = field["element"]
+
+            # TODO: Replace with Gemini logic
+            fake_value = "9876543210" if "phone" in prompt.lower() else "Test Answer"
+
+            try:
+                if tag == "input" or tag == "textarea":
+                    elem.clear()
+                    elem.send_keys(fake_value)
+                elif tag == "select":
+                    select = Select(elem)
+                    select.select_by_index(1)  # just selects first option (not ideal)
+                
+                self.logger.info(f"✍️ Autofilled: {prompt} with '{fake_value}'")
+            except Exception as e:
+                self.logger.warning(f"⚠️ Could not autofill: {prompt} — {e}")
 
     def check_required_fields(self):
         try:
             self.logger.info("🔍 Checking required fields in modal...")
 
-            # Wait for modal
             self.wait.until(EC.presence_of_element_located((By.CLASS_NAME, "jobs-easy-apply-modal")))
 
-            # Find all required input, textarea, select elements
             required_fields = self.driver.find_elements(By.CSS_SELECTOR, "input[required], textarea[required], select[required]")
 
             missing_fields = []
+            prompts = []
 
             for field in required_fields:
                 tag = field.tag_name
-                field_type = field.get_attribute("type")
+                field_type = field.get_attribute("type") or tag
                 value = field.get_attribute("value") or ""
 
-                # 🧠 Use improved prompt extraction
-                prompt = self.get_field_prompt(field)
-                is_filled = bool(value.strip()) or tag == "select" and field.get_attribute("selectedIndex") != "0"
+                prompt = self.get_field_prompt(field)  # ← assumes you’ve defined this method
+
+                # Handle select separately
+                is_filled = (
+                    bool(value.strip())
+                    if tag != "select"
+                    else field.get_attribute("selectedIndex") != "0"
+                )
 
                 self.logger.info(f"➡️ Field: {prompt} | Tag: {tag} | Type: {field_type} | Filled: {is_filled}")
 
@@ -188,52 +212,75 @@ class LinkedInBot:
                         "tag": tag,
                         "type": field_type
                     })
+                    question = f"Please provide an answer for the following required field: {prompt}"
+                    prompts.append(question)
+                    self.logger.info(f"🧠 Prompt to generate: {question}")
 
             if not missing_fields:
                 self.logger.info("✅ All required fields are already filled.")
             else:
                 self.logger.warning(f"⚠️ {len(missing_fields)} required fields are empty.")
 
-            return missing_fields
+            return missing_fields, prompts
 
         except Exception as e:
             self.logger.error(f"❌ Error while checking required fields: {e}")
-            return []
+            return [], []
+
 
 
     def handle_easy_apply_modal(self):
         try:
             self.logger.info("📝 Handling Easy Apply modal...")
 
-            # Wait for the modal to appear
             self.wait.until(EC.presence_of_element_located((By.CLASS_NAME, "jobs-easy-apply-modal")))
-            time.sleep(3)  # wait for fields to fully render
+            time.sleep(3)
 
-            # Check if required fields are filled
-            missing_fields = self.check_required_fields()
+            # Step 1: Check required fields
+            missing_fields, prompts = self.check_required_fields()
             if missing_fields:
-                self.logger.warning("❌ Skipping job due to unfilled required fields.")
-                return False
+                self.logger.info("🔄 Attempting to autofill missing fields...")
+                self.autofill_required_fields(missing_fields)
 
-            # Try clicking Submit button (for single-step forms)
+                # Step 2: Re-check after autofill
+                missing_fields, prompts = self.check_required_fields()
+                if missing_fields:
+                    self.logger.warning("❌ Still some required fields missing after autofill.")
+                    for p in prompts:
+                        self.logger.info(f"❓ Gemini Prompt: {p}")
+                    return False
+
+            # Step 3: Try 'Continue to next step'
             try:
                 next_btn = self.wait.until(
                     EC.element_to_be_clickable((By.XPATH, "//button[@aria-label='Continue to next step']"))
                 )
                 next_btn.click()
-                self.logger.info("✅ Next clicked")
+                self.logger.info("✅ Clicked 'Continue to next step'")
                 time.sleep(2)
                 return True
             except TimeoutException:
-                self.logger.warning("⚠️ Next button not found or not clickable.")
-                return False
+                # Step 4: Fallback to 'Submit'
+                try:
+                    submit_btn = self.wait.until(
+                        EC.element_to_be_clickable((By.XPATH, "//button[@aria-label='Submit application']"))
+                    )
+                    submit_btn.click()
+                    self.logger.info("✅ Clicked 'Submit application'")
+                    time.sleep(2)
+                    return True
+                except TimeoutException:
+                    self.logger.warning("⚠️ Neither 'Continue' nor 'Submit' button found.")
+                    return False
 
         except TimeoutException:
             self.logger.warning("❌ No Easy Apply modal detected.")
         except Exception as e:
-            self.logger.error(f"⚠️ Could not submit: {e}")
+            self.logger.error(f"⚠️ Could not complete modal handling: {e}")
 
         return False
+
+
 
 
 
@@ -245,9 +292,6 @@ class LinkedInBot:
                 self.logger.info(f"Opening job #{idx+1}: {job['title']} at {job['company']}")
                 self.driver.get(job['link'])
                 time.sleep(4)
-
-                # self.wait.until(EC.presence_of_element_located((By.CLASS_NAME, "jobs-description")))
-                # time.sleep(2)
 
                 # Find all Easy Apply buttons (yes, there can be multiple with same ID!)
                 all_buttons = self.driver.find_elements(By.XPATH, "//button[@id='jobs-apply-button-id']")
