@@ -1,0 +1,11 @@
+{
+  "job_title": "Data Engineer",
+  "location": "India",
+  "easy_apply_only": true,
+  "keywords": ["ETL", "AWS", "SQL", "Python"],
+  "defaults": {
+    "relocation": "Yes",
+    "expected_salary": "15 LPA",
+    "notice_period": "60 days"
+  }
+}
