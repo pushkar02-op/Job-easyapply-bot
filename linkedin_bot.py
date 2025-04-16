@@ -95,7 +95,7 @@ class LinkedInBot:
             f"&f_AL=true"            # Easy Apply
             f"&geoId=102713980"      # India geoId (adjust as needed)
         )
-        # filtered_url="https://www.linkedin.com/jobs/search/?alertAction=viewjobs&currentJobId=4193708846&geoId=102713980&keywords=Dexian%20data%20engineer&origin=JOB_SEARCH_PAGE_SEARCH_BUTTON&refresh=true"
+        filtered_url="https://www.linkedin.com/jobs/search/?currentJobId=4211428768&keywords=Innova%20ESI%20Data%20Engineer&origin=BLENDED_SEARCH_RESULT_NAVIGATION_SEE_ALL&originToLandingJobPostings=4211428768%2C4210659792"
         
         self.driver.get(filtered_url)
         time.sleep(5)
@@ -183,24 +183,28 @@ class LinkedInBot:
     def get_field_prompt(self, input_element):
         """Extracts the most relevant question or label for a given input element."""
         try:
-            # 1. Check aria-label
+            # If the element is a fieldset (radio group), return the legend text.
+            if input_element.tag_name.lower() == "fieldset":
+                try:
+                    return input_element.find_element(By.TAG_NAME, "legend").text.strip()
+                except Exception:
+                    return "Radio question not found"
+
+            # For standard inputs:
             aria_label = input_element.get_attribute("aria-label")
             if aria_label:
                 return aria_label.strip()
 
-            # 2. Check placeholder
             placeholder = input_element.get_attribute("placeholder")
             if placeholder:
                 return placeholder.strip()
 
-            # 3. Check associated <label for="input_id">
             input_id = input_element.get_attribute("id")
             if input_id:
                 label = self.driver.find_elements(By.XPATH, f"//label[@for='{input_id}']")
                 if label:
                     return label[0].text.strip()
 
-            # 4. Check previous sibling text (less reliable fallback)
             parent = input_element.find_element(By.XPATH, "..")
             try:
                 preceding = parent.find_element(By.XPATH, "./preceding-sibling::*[1]")
@@ -213,6 +217,7 @@ class LinkedInBot:
             self.logger.warning(f"❌ Error extracting field prompt: {e}")
 
         return "Field information not found"
+
     def autofill_required_fields(self, missing_fields):
         """
         Autofills missing required fields using Gemini responses based on field prompts.
@@ -222,24 +227,20 @@ class LinkedInBot:
             prompt = field_info["prompt"]
             tag = field_info["tag"]
             field_type = field_info["type"]
-            # Append a note to ask Gemini for a value matching the expected format.
-            full_prompt = prompt  # Already includes validation feedback if available.
+            full_prompt = prompt  # Already includes any validation feedback.
 
             try:
-                # Get answer from Gemini (this returns the generated text)
                 ai_response = answer_question(self.gemini_model, context="", question=full_prompt)
             except Exception as e:
                 self.logger.error(f"❌ Gemini API error: {e}")
                 ai_response = "Sample Text"
 
-            # Handle dropdown fields separately
+            # Handle dropdown fields
             if tag == "select" and field_type == "select-one":
                 try:
-                    # Wait for the dropdown to become visible and clickable
                     select_elem = WebDriverWait(self.driver, 10).until(
                         EC.element_to_be_clickable(element)
                     )
-                    # Open the dropdown and select the option based on AI response
                     options = select_elem.find_elements(By.TAG_NAME, "option")
                     selected_option = None
                     for option in options:
@@ -253,8 +254,30 @@ class LinkedInBot:
                         self.logger.warning(f"❌ No matching option found for dropdown '{field_info['label']}'")
                 except Exception as e:
                     self.logger.error(f"❌ Error autofilling dropdown '{field_info['label']}': {e}")
+            # Handle radio button groups
+            elif tag == "fieldset" and field_type == "radio":
+                try:
+                    # element is the fieldset containing the radio options.
+                    radios = field_info["element"].find_elements(By.CSS_SELECTOR, "input[type='radio']")
+                    selected_radio = None
+                    for radio in radios:
+                        if ai_response.lower() in radio.get_attribute("value").lower():
+                            selected_radio = radio
+                            break
+                    if selected_radio:
+                        # Use JavaScript to click the radio button and dispatch a change event to register the selection.
+                        self.driver.execute_script("""
+                            arguments[0].click();
+                            arguments[0].dispatchEvent(new Event('change', { bubbles: true }));
+                        """, selected_radio)
+                        self.logger.info(f"✍️ Autofilled radio button '{field_info['label']}' with '{ai_response}'")
+                    else:
+                        self.logger.warning(f"⚠️ No matching radio option found for '{field_info['label']}'")
+                except Exception as e:
+                    self.logger.error(f"❌ Error autofilling radio button field '{field_info['label']}': {e}")
+
             else:
-                # For non-dropdown fields (text inputs, etc.), proceed as before
+                # Handle standard inputs
                 try:
                     element.click()
                     element.clear()
@@ -285,69 +308,88 @@ class LinkedInBot:
             self.wait.until(EC.presence_of_element_located((By.CLASS_NAME, "jobs-easy-apply-modal")))
             time.sleep(1)
 
-            # Find all required input, textarea, and select elements.
-            required_fields = self.driver.find_elements(By.CSS_SELECTOR, "input[required], textarea[required], select[required]")
+            # Include fieldsets for radio groups along with input, textarea and select.
+            required_fields = self.driver.find_elements(By.CSS_SELECTOR, "input[required], textarea[required], select[required], fieldset[data-test-form-builder-radio-button-form-component='true']")
             missing_fields = []
             prompts = []
 
             for field in required_fields:
                 tag = field.tag_name.lower()
-                field_type = field.get_attribute("type") or "text"
-                # Use a fallback to extract label from attributes or nearby elements.
-                # Fallback method to extract label from adjacent elements
-                label = (
-                    field.get_attribute("aria-label")
-                    or field.get_attribute("name")
-                    or field.get_attribute("placeholder")
-                    or field.find_element(By.XPATH, './preceding-sibling::label').text.strip()  # Check nearby labels
-                    or "Unknown field"
-                )
-
-                value = field.get_attribute("value") or ""
-
-                # For select elements, consider them filled if a non-default option is selected.
-                is_select = (tag == "select")
-                is_filled = bool(value.strip()) if not is_select else field.get_attribute("selectedIndex") not in ["", "0", None]
-
-                # For input fields, if empty, trigger validation by typing a test character.
-                validation_message = ""
-                if not is_filled and tag == "input":
+                # If the field is a radio group (fieldset), process separately.
+                if tag == "fieldset":
                     try:
-                        field.clear()
-                        field.send_keys("a")  # Type a test character.
-                        time.sleep(1)
+                        # Extract question from legend.
+                        question = field.find_element(By.TAG_NAME, "legend").text.strip()
                     except Exception:
-                        pass
+                        question = "Radio field question not found"
 
-                    # Check if field now has an error by class name.
-                    if "fb-dash-form-element__error-field" in field.get_attribute("class"):
-                        # Use the aria-describedby to extract the error message.
-                        error_id = field.get_attribute("aria-describedby")
-                        if error_id:
-                            try:
-                                error_elem = self.driver.find_element(By.CSS_SELECTOR, f"#{error_id} .artdeco-inline-feedback__message")
-                                validation_message = error_elem.text.strip()
-                            except Exception:
-                                validation_message = ""
-                        is_filled = False  # Even if a value is present, error indicates invalid data.
+                    # Check if any radio button is selected within this fieldset.
+                    radios = field.find_elements(By.CSS_SELECTOR, "input[type='radio']")
+                    is_filled = any(radio.is_selected() for radio in radios)
 
-                self.logger.info(f"➡️ Field: {label} | Tag: {tag} | Type: {field_type} | Filled: {is_filled}")
+                    self.logger.info(f"➡️ Field: {question} | Tag: {tag} | Type: radio | Filled: {is_filled}")
 
-                if not is_filled:
-                    # Build Gemini prompt based on error feedback if available.
-                    if validation_message:
-                        prompt_text = f"Please provide a valid answer for '{label}'. The input must satisfy: {validation_message}"
-                    else:
-                        prompt_text = f"Please provide an appropriate answer for '{label}' (expected input type: {field_type})."
-                    missing_fields.append({
-                        "element": field,
-                        "label": label,
-                        "type": field_type,
-                        "tag": tag,
-                        "prompt": prompt_text,
-                        "validation": validation_message
-                    })
-                    self.logger.info(f"🧠 Prompt to generate: {prompt_text}")
+                    if not is_filled:
+                        prompt_text = f"Please select an appropriate response for '{question}'. Options: " + ", ".join([radio.get_attribute("value") for radio in radios])
+                        missing_fields.append({
+                            "element": field,
+                            "label": question,
+                            "type": "radio",
+                            "tag": tag,
+                            "options": radios,  # store radio options for later use
+                            "prompt": prompt_text
+                        })
+                        self.logger.info(f"🧠 Prompt to generate: {prompt_text}")
+                else:
+                    # Process standard input, textarea, and select fields.
+                    field_type = field.get_attribute("type") or "text"
+                    label = (
+                        field.get_attribute("aria-label")
+                        or field.get_attribute("name")
+                        or field.get_attribute("placeholder")
+                        or field.find_element(By.XPATH, './preceding-sibling::label').text.strip()  # Check nearby labels
+                        or "Unknown field"
+                    )
+                    value = field.get_attribute("value") or ""
+                    is_select = (tag == "select")
+                    is_filled = bool(value.strip()) if not is_select else field.get_attribute("selectedIndex") not in ["", "0", None]
+
+                    # For input fields, if empty, trigger validation by typing a test character.
+                    validation_message = ""
+                    if not is_filled and tag == "input":
+                        try:
+                            field.clear()
+                            field.send_keys("a")  # Type a test character.
+                            time.sleep(1)
+                        except Exception:
+                            pass
+
+                        if "fb-dash-form-element__error-field" in field.get_attribute("class"):
+                            error_id = field.get_attribute("aria-describedby")
+                            if error_id:
+                                try:
+                                    error_elem = self.driver.find_element(By.CSS_SELECTOR, f"#{error_id} .artdeco-inline-feedback__message")
+                                    validation_message = error_elem.text.strip()
+                                except Exception:
+                                    validation_message = ""
+                            is_filled = False  # Even if a value is present, error indicates invalid data.
+
+                    self.logger.info(f"➡️ Field: {label} | Tag: {tag} | Type: {field_type} | Filled: {is_filled}")
+
+                    if not is_filled:
+                        if validation_message:
+                            prompt_text = f"Please provide a valid answer for '{label}'. The input must satisfy: {validation_message}"
+                        else:
+                            prompt_text = f"Please provide an appropriate answer for '{label}' (expected input type: {field_type})."
+                        missing_fields.append({
+                            "element": field,
+                            "label": label,
+                            "type": field_type,
+                            "tag": tag,
+                            "prompt": prompt_text,
+                            "validation": validation_message
+                        })
+                        self.logger.info(f"🧠 Prompt to generate: {prompt_text}")
 
             if not missing_fields:
                 self.logger.info("✅ All required fields are already filled.")
@@ -360,7 +402,6 @@ class LinkedInBot:
         except Exception as e:
             self.logger.error(f"❌ Error while checking required fields: {e}")
             return [], []
-
 
 
     def handle_easy_apply_modal(self):
