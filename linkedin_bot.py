@@ -238,10 +238,22 @@ class LinkedInBot:
             # Handle dropdown fields
             if tag == "select" and field_type == "select-one":
                 try:
+                    # Wait for the dropdown to become visible and clickable
                     select_elem = WebDriverWait(self.driver, 10).until(
                         EC.element_to_be_clickable(element)
                     )
                     options = select_elem.find_elements(By.TAG_NAME, "option")
+                    # Build a list of available options (exclude default if present)
+                    available_options = [option.text.strip() for option in options if option.text.strip().lower() != "select an option"]
+                    # Construct a new prompt that includes the available options
+                    new_prompt = f"{prompt} Options available: {', '.join(available_options)}"
+                    self.logger.info(f"🔍 New prompt for dropdown: {new_prompt}")
+                    try:
+                        # Get answer from Gemini using the updated prompt
+                        ai_response = answer_question(self.gemini_model, context="", question=new_prompt).strip()
+                    except Exception as e:
+                        self.logger.error(f"❌ Gemini API error (dropdown override): {e}")
+                        ai_response = "Sample Text"
                     selected_option = None
                     for option in options:
                         if ai_response.lower() in option.text.strip().lower():
@@ -254,6 +266,8 @@ class LinkedInBot:
                         self.logger.warning(f"❌ No matching option found for dropdown '{field_info['label']}'")
                 except Exception as e:
                     self.logger.error(f"❌ Error autofilling dropdown '{field_info['label']}': {e}")
+
+
             # Handle radio button groups
             elif tag == "fieldset" and field_type == "radio":
                 try:
