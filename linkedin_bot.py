@@ -429,16 +429,16 @@ class LinkedInBot:
                 except Exception:
                     self.logger.debug("🔍 'Follow company' checkbox not found or already unchecked.")
 
-                # # Try "Submit application"
-                # try:
-                #     submit_btn = self.driver.find_element(By.XPATH, "//button[@aria-label='Submit application']")
-                #     if submit_btn.is_displayed() and submit_btn.is_enabled():
-                #         submit_btn.click()
-                #         self.logger.info("✅ Clicked 'Submit application'")
-                #         time.sleep(2)
-                #         return True
-                # except NoSuchElementException:
-                #     self.logger.warning("⚠️ No 'Submit application' button found.")
+                # Try "Submit application"
+                try:
+                    submit_btn = self.driver.find_element(By.XPATH, "//button[@aria-label='Submit application']")
+                    if submit_btn.is_displayed() and submit_btn.is_enabled():
+                        submit_btn.click()
+                        self.logger.info("✅ Clicked 'Submit application'")
+                        time.sleep(2)
+                        return True
+                except NoSuchElementException:
+                    self.logger.warning("⚠️ No 'Submit application' button found.")
 
                 # Try generic "Next" or "Submit" button if labeled differently
                 try:
