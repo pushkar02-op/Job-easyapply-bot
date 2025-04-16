@@ -95,7 +95,8 @@ class LinkedInBot:
             f"&f_AL=true"            # Easy Apply
             f"&geoId=102713980"      # India geoId (adjust as needed)
         )
-
+        # filtered_url="https://www.linkedin.com/jobs/search/?alertAction=viewjobs&currentJobId=4193708846&geoId=102713980&keywords=Dexian%20data%20engineer&origin=JOB_SEARCH_PAGE_SEARCH_BUTTON&refresh=true"
+        
         self.driver.get(filtered_url)
         time.sleep(5)
         self.logger.info("✅ Search page with filters loaded.")
@@ -145,6 +146,40 @@ class LinkedInBot:
         self.logger.info(f"Collected {len(job_cards)} job cards.")
         return job_cards
     
+    def get_dropdown_options(self, field_element):
+        try:
+            field_element.click()
+            time.sleep(1)
+            option_elements = self.driver.find_elements(By.XPATH, "//div[@role='listbox']//li")
+            options = [opt.text.strip() for opt in option_elements if opt.text.strip()]
+            return options
+        except Exception as e:
+            self.logger.error(f"❌ Failed to get dropdown options: {e}")
+            return []
+        
+    def ask_ai_to_select_option(self, field_label, options):
+        prompt = (
+            f"Choose the most appropriate option from the list below for the field/question: "
+            f"'{field_label}'. Options: {options}. "
+            f"Respond with only one option from the list."
+        )
+        self.logger.info(f"🧠 AI Prompt: {prompt}")
+        ai_response = self.query_gemini(prompt)
+        return ai_response.strip()
+    
+    def select_option_by_text(self, option_text):
+        try:
+            options = self.driver.find_elements(By.XPATH, "//div[@role='listbox']//li")
+            for option in options:
+                if option_text.lower() in option.text.strip().lower():
+                    option.click()
+                    self.logger.info(f"✅ Selected dropdown option: {option.text}")
+                    return True
+            self.logger.warning(f"⚠️ Option '{option_text}' not found in dropdown.")
+        except Exception as e:
+            self.logger.error(f"❌ Error selecting dropdown option: {e}")
+        return False
+
     def get_field_prompt(self, input_element):
         """Extracts the most relevant question or label for a given input element."""
         try:
@@ -197,16 +232,37 @@ class LinkedInBot:
                 self.logger.error(f"❌ Gemini API error: {e}")
                 ai_response = "Sample Text"
 
-            # Fill the response into the field.
-            try:
-                element.click()
-                element.clear()
-                element.send_keys(ai_response)
-                self.logger.info(f"✍️ Autofilled '{field_info['label']}' with '{ai_response}'")
-                time.sleep(1)
-            except Exception as fill_error:
-                self.logger.error(f"❌ Could not fill field '{field_info['label']}': {fill_error}")
-
+            # Handle dropdown fields separately
+            if tag == "select" and field_type == "select-one":
+                try:
+                    # Wait for the dropdown to become visible and clickable
+                    select_elem = WebDriverWait(self.driver, 10).until(
+                        EC.element_to_be_clickable(element)
+                    )
+                    # Open the dropdown and select the option based on AI response
+                    options = select_elem.find_elements(By.TAG_NAME, "option")
+                    selected_option = None
+                    for option in options:
+                        if ai_response.lower() in option.text.strip().lower():
+                            selected_option = option
+                            break
+                    if selected_option:
+                        selected_option.click()
+                        self.logger.info(f"✍️ Autofilled dropdown '{field_info['label']}' with '{ai_response}'")
+                    else:
+                        self.logger.warning(f"❌ No matching option found for dropdown '{field_info['label']}'")
+                except Exception as e:
+                    self.logger.error(f"❌ Error autofilling dropdown '{field_info['label']}': {e}")
+            else:
+                # For non-dropdown fields (text inputs, etc.), proceed as before
+                try:
+                    element.click()
+                    element.clear()
+                    element.send_keys(ai_response)
+                    self.logger.info(f"✍️ Autofilled '{field_info['label']}' with '{ai_response}'")
+                    time.sleep(1)
+                except Exception as fill_error:
+                    self.logger.error(f"❌ Could not fill field '{field_info['label']}': {fill_error}")
 
     def get_label_from_parent(self, field):
         try:
@@ -373,16 +429,16 @@ class LinkedInBot:
                 except Exception:
                     self.logger.debug("🔍 'Follow company' checkbox not found or already unchecked.")
 
-                # Try "Submit application"
-                try:
-                    submit_btn = self.driver.find_element(By.XPATH, "//button[@aria-label='Submit application']")
-                    if submit_btn.is_displayed() and submit_btn.is_enabled():
-                        submit_btn.click()
-                        self.logger.info("✅ Clicked 'Submit application'")
-                        time.sleep(2)
-                        return True
-                except NoSuchElementException:
-                    self.logger.warning("⚠️ No 'Submit application' button found.")
+                # # Try "Submit application"
+                # try:
+                #     submit_btn = self.driver.find_element(By.XPATH, "//button[@aria-label='Submit application']")
+                #     if submit_btn.is_displayed() and submit_btn.is_enabled():
+                #         submit_btn.click()
+                #         self.logger.info("✅ Clicked 'Submit application'")
+                #         time.sleep(2)
+                #         return True
+                # except NoSuchElementException:
+                #     self.logger.warning("⚠️ No 'Submit application' button found.")
 
                 # Try generic "Next" or "Submit" button if labeled differently
                 try:
