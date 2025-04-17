@@ -12,12 +12,13 @@ import logging
 from gemini_helper import configure_api, create_model, answer_question
 from dotenv import load_dotenv
 import os
+from gemini_prompter import generate_gemini_prompt
 
 
 
 class LinkedInBot:
-    def __init__(self, headless=False, timeout=10, resume_text=""):
-        self.resume_text = resume_text
+    def __init__(self, headless=False, timeout=10, resume_context=None):
+        self.resume_context = resume_context or {}
         self.driver = self._setup_driver(headless)
         self.wait = WebDriverWait(self.driver, timeout)
         self.logger = self._setup_logger()
@@ -219,88 +220,76 @@ class LinkedInBot:
 
         return "Field information not found"
 
+
     def autofill_required_fields(self, missing_fields):
         """
         Autofills missing required fields using Gemini responses based on field prompts.
         """
         for field_info in missing_fields:
             element = field_info["element"]
-            prompt = field_info["prompt"]
+            label = field_info["label"]
             tag = field_info["tag"]
             field_type = field_info["type"]
-            full_prompt = prompt  # Already includes any validation feedback.
+            options = field_info.get("options", [])
 
+            # 🔄 Generate prompt from structured context
             try:
-                ai_response = answer_question(self.gemini_model, context="", question=full_prompt)
+                full_prompt = generate_gemini_prompt(
+                    field_label=label,
+                    input_type=field_type,
+                    resume_context=self.resume_context,
+                    options=options
+                )
+                ai_response = answer_question(self.gemini_model, context="", question=full_prompt).strip()
             except Exception as e:
                 self.logger.error(f"❌ Gemini API error: {e}")
                 ai_response = "Sample Text"
 
-            # Handle dropdown fields
+            # 🧩 Dropdowns
             if tag == "select" and field_type == "select-one":
                 try:
-                    # Wait for the dropdown to become visible and clickable
-                    select_elem = WebDriverWait(self.driver, 10).until(
-                        EC.element_to_be_clickable(element)
+                    select_elem = WebDriverWait(self.driver, 10).until(EC.element_to_be_clickable(element))
+                    option_elements = select_elem.find_elements(By.TAG_NAME, "option")
+
+                    selected_option = next(
+                        (opt for opt in option_elements if ai_response.lower() in opt.text.strip().lower()), None
                     )
-                    options = select_elem.find_elements(By.TAG_NAME, "option")
-                    # Build a list of available options (exclude default if present)
-                    available_options = [option.text.strip() for option in options if option.text.strip().lower() != "select an option"]
-                    # Construct a new prompt that includes the available options
-                    new_prompt = f"{prompt} Options available: {', '.join(available_options)}"
-                    self.logger.info(f"🔍 New prompt for dropdown: {new_prompt}")
-                    try:
-                        # Get answer from Gemini using the updated prompt
-                        ai_response = answer_question(self.gemini_model, context="", question=new_prompt).strip()
-                    except Exception as e:
-                        self.logger.error(f"❌ Gemini API error (dropdown override): {e}")
-                        ai_response = "Sample Text"
-                    selected_option = None
-                    for option in options:
-                        if ai_response.lower() in option.text.strip().lower():
-                            selected_option = option
-                            break
                     if selected_option:
                         selected_option.click()
-                        self.logger.info(f"✍️ Autofilled dropdown '{field_info['label']}' with '{ai_response}'")
+                        self.logger.info(f"✍️ Autofilled dropdown '{label}' with '{ai_response}'")
                     else:
-                        self.logger.warning(f"❌ No matching option found for dropdown '{field_info['label']}'")
+                        self.logger.warning(f"⚠️ No matching dropdown option found for '{label}'")
                 except Exception as e:
-                    self.logger.error(f"❌ Error autofilling dropdown '{field_info['label']}': {e}")
+                    self.logger.error(f"❌ Dropdown autofill failed for '{label}': {e}")
 
-
-            # Handle radio button groups
+            # 🔘 Radio Buttons
             elif tag == "fieldset" and field_type == "radio":
                 try:
-                    # element is the fieldset containing the radio options.
-                    radios = field_info["element"].find_elements(By.CSS_SELECTOR, "input[type='radio']")
-                    selected_radio = None
-                    for radio in radios:
-                        if ai_response.lower() in radio.get_attribute("value").lower():
-                            selected_radio = radio
-                            break
+                    radios = element.find_elements(By.CSS_SELECTOR, "input[type='radio']")
+                    selected_radio = next(
+                        (r for r in radios if ai_response.lower() in r.get_attribute("value").lower()), None
+                    )
                     if selected_radio:
-                        # Use JavaScript to click the radio button and dispatch a change event to register the selection.
                         self.driver.execute_script("""
                             arguments[0].click();
                             arguments[0].dispatchEvent(new Event('change', { bubbles: true }));
                         """, selected_radio)
-                        self.logger.info(f"✍️ Autofilled radio button '{field_info['label']}' with '{ai_response}'")
+                        self.logger.info(f"✍️ Autofilled radio button '{label}' with '{ai_response}'")
                     else:
-                        self.logger.warning(f"⚠️ No matching radio option found for '{field_info['label']}'")
+                        self.logger.warning(f"⚠️ No matching radio option found for '{label}'")
                 except Exception as e:
-                    self.logger.error(f"❌ Error autofilling radio button field '{field_info['label']}': {e}")
+                    self.logger.error(f"❌ Radio autofill failed for '{label}': {e}")
 
+            # ✏️ Standard Input Fields
             else:
-                # Handle standard inputs
                 try:
                     element.click()
                     element.clear()
                     element.send_keys(ai_response)
-                    self.logger.info(f"✍️ Autofilled '{field_info['label']}' with '{ai_response}'")
+                    self.logger.info(f"✍️ Autofilled '{label}' with '{ai_response}'")
                     time.sleep(1)
                 except Exception as fill_error:
-                    self.logger.error(f"❌ Could not fill field '{field_info['label']}': {fill_error}")
+                    self.logger.error(f"❌ Could not fill field '{label}': {fill_error}")
 
     def get_label_from_parent(self, field):
         try:
@@ -482,6 +471,7 @@ class LinkedInBot:
                     if follow_checkbox.is_selected():
                         self.driver.execute_script("arguments[0].click();", follow_checkbox)
                         self.logger.info("☑️ Unchecked 'Follow company' checkbox.")
+                        time.sleep(2)
                 except Exception:
                     self.logger.debug("🔍 'Follow company' checkbox not found or already unchecked.")
 

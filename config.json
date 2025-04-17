@@ -3,16 +3,82 @@
   "job_title": "Data Engineer",
   "location": "India",
   "easy_apply_only": true,
+  "profile_summary": "To leverage my 4 years of experience as a Data Engineer in designing and optimizing ETL workflows, data pipelines, and scalable data models. I aim to contribute to innovative projects, drive data-driven decision-making, and continuously enhance my skills in advanced data engineering technologies",
   "experience": [
     {
       "company": "PwC SDC",
       "role": "Data Engineer",
-      "duration": "3+ years",
-      "tech_stack": ["SQL", "Python", "AWS Glue", "Redshift", "SnapLogic"]
+      "designation": "Associate",
+      "duration": "4 years",
+      "joined": "Aug 2021",
+      "tech_stack": [
+        "SQL",
+        "Python",
+        "AWS Glue",
+        "Redshift",
+        "SnapLogic",
+        "IICS"
+      ],
+      "responciblity": [
+        "Experienced in data migration, integration, and pipeline development for enterprise clients",
+        "Designed and implemented data models and ETL pipelines using AWS (Redshift, Glue, S3), SnapLogic, and IICS for efficient data processing",
+        "Optimized data validation tools, reducing runtime by 75%,"
+      ]
     }
   ],
-  "skills": ["ETL", "AWS", "Python", "SQL", "Glue", "Redshift", "SnapLogic"],
+  "primary_skills": [
+    "ETL",
+    "AWS",
+    "Python",
+    "SQL",
+    "Glue",
+    "Redshift",
+    "SnapLogic",
+    "IICS"
+  ],
+  "secondary_skills": [
+    "Data Modeling",
+    "Data Warehousing Concepts",
+    "AWS S3",
+    "Maximo"
+  ],
+  "project_details": [
+    {
+      "Data Integration and Pipeline Development for Legacy System Migration": [
+        "AWS Data Engineer for a project with a US pharma giant, migrating legacy data to AWS for enhanced efficiency and scalability.",
+        "Developed SQL queries for materialized views in Redshift.",
+        "Created AWS Glue code to execute SQL files in Redshift."
+      ],
+      "Data Conversion and Integration for an Asset Management System": [
+        "Developed SnapLogic pipelines to load data from SQL Server into Maximo, following source-to-target mappings and implementing business logic.",
+        "Conducted testing, UAT practice loads, and successfully executed production loads and supported the team throughout the project lifecycle.",
+        "Optimized a pre-load data validation tool, reducing end-to-end runtime from 1 hour to 15 minutes."
+      ],
+      "Data Warehousing and ETL Development for a USA Healthcare Client": [
+        "Developed secure ETL pipelines using IICS, adhering to STTM mappings",
+        "Extracted raw data, cleaned it, and converted files to parquet format",
+        "stored in S3. Loaded data into Redshift data vault and data mart layers",
+        "Conducted unit testing, supported testing and production deployments",
+        "Maintained detailed project documentation and assisted in onboarding new team members."
+      ]
+    }
+  ],
   "notice_period": "60 days (negotiable)",
+  "current_salary": "8.06 LPA",
   "expected_salary": "15 LPA",
-  "relocation": "Yes"
+  "relocation": "Yes",
+  "location_preference": ["Bangalore", "Gurgaon", "Noida", "Pune"],
+  "certification": [
+    "AWS Certified Cloud Practitioner",
+    "SnapLogic Certified Automation Professional"
+  ],
+  "education": [
+    {
+      "college_name": "KALINGA INSTITUTE OF INDUSTRIAL TECHNOLOGY",
+      "degree": "B-Tech",
+      "branch": "Information TECHNOLOGY",
+      "from": "2017",
+      "to": "2021"
+    }
+  ]
 }
