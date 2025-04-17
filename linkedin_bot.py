@@ -230,15 +230,26 @@ class LinkedInBot:
             label = field_info["label"]
             tag = field_info["tag"]
             field_type = field_info["type"]
-            options = field_info.get("options", [])
 
-            # 🔄 Generate prompt from structured context
+            # —–––– Convert any WebElement options into plain text for the prompt
+            raw_opts = field_info.get("options", [])
+            option_texts = []
+            for opt in raw_opts:
+                try:
+                    # If it's a WebElement, grab its value or text
+                    val = opt.get_attribute("value")
+                    option_texts.append(val.strip() if val else opt.text.strip())
+                except Exception:
+                    # Fallback for any non-WebElement
+                    option_texts.append(str(opt).strip())
+
+            # 🔄 Generate prompt from structured context, passing clean option_texts
             try:
                 full_prompt = generate_gemini_prompt(
                     field_label=label,
                     input_type=field_type,
                     resume_context=self.resume_context,
-                    options=options
+                    options=option_texts or None
                 )
                 ai_response = answer_question(self.gemini_model, context="", question=full_prompt).strip()
             except Exception as e:
@@ -248,11 +259,15 @@ class LinkedInBot:
             # 🧩 Dropdowns
             if tag == "select" and field_type == "select-one":
                 try:
-                    select_elem = WebDriverWait(self.driver, 10).until(EC.element_to_be_clickable(element))
+                    select_elem = WebDriverWait(self.driver, 10).until(
+                        EC.element_to_be_clickable(element)
+                    )
                     option_elements = select_elem.find_elements(By.TAG_NAME, "option")
 
                     selected_option = next(
-                        (opt for opt in option_elements if ai_response.lower() in opt.text.strip().lower()), None
+                        (opt for opt in option_elements
+                        if ai_response.lower() in opt.text.strip().lower()),
+                        None
                     )
                     if selected_option:
                         selected_option.click()
@@ -267,7 +282,9 @@ class LinkedInBot:
                 try:
                     radios = element.find_elements(By.CSS_SELECTOR, "input[type='radio']")
                     selected_radio = next(
-                        (r for r in radios if ai_response.lower() in r.get_attribute("value").lower()), None
+                        (r for r in radios
+                        if ai_response.lower() in r.get_attribute("value").lower()),
+                        None
                     )
                     if selected_radio:
                         self.driver.execute_script("""
@@ -290,7 +307,7 @@ class LinkedInBot:
                     time.sleep(1)
                 except Exception as fill_error:
                     self.logger.error(f"❌ Could not fill field '{label}': {fill_error}")
-
+                
     def get_label_from_parent(self, field):
         try:
             # Go up to parent container and find any label or span with question
