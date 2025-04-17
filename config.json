@@ -1,11 +1,18 @@
 {
+  "resume_path": "C:\\Users\\pushk\\OneDrive\\Documents\\My Files\\Pushkar_Kumar_Resume.pdf",
   "job_title": "Data Engineer",
   "location": "India",
   "easy_apply_only": true,
-  "keywords": ["ETL", "AWS", "SQL", "Python"],
-  "defaults": {
-    "relocation": "Yes",
-    "expected_salary": "15 LPA",
-    "notice_period": "60 days"
-  }
+  "experience": [
+    {
+      "company": "PwC SDC",
+      "role": "Data Engineer",
+      "duration": "3+ years",
+      "tech_stack": ["SQL", "Python", "AWS Glue", "Redshift", "SnapLogic"]
+    }
+  ],
+  "skills": ["ETL", "AWS", "Python", "SQL", "Glue", "Redshift", "SnapLogic"],
+  "notice_period": "60 days (negotiable)",
+  "expected_salary": "15 LPA",
+  "relocation": "Yes"
 }

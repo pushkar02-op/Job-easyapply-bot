@@ -16,7 +16,8 @@ import os
 
 
 class LinkedInBot:
-    def __init__(self, headless=False, timeout=10):
+    def __init__(self, headless=False, timeout=10, resume_text=""):
+        self.resume_text = resume_text
         self.driver = self._setup_driver(headless)
         self.wait = WebDriverWait(self.driver, timeout)
         self.logger = self._setup_logger()
