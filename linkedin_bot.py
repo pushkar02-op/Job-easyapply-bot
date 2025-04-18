@@ -12,6 +12,7 @@ import logging
 from gemini_helper import configure_api, create_model, answer_question
 from dotenv import load_dotenv
 import os
+import sys
 from gemini_prompter import generate_gemini_prompt
 
 
@@ -30,12 +31,15 @@ class LinkedInBot:
 
     def _setup_logger(self):
         logger = logging.getLogger(__name__)
-        if not logger.handlers:
-            handler = logging.StreamHandler()
-            formatter = logging.Formatter('[%(asctime)s] %(levelname)s - %(message)s')
-            handler.setFormatter(formatter)
-            logger.addHandler(handler)
-            logger.setLevel(logging.INFO)
+        logger.handlers.clear()  # Clear existing handlers to avoid duplicate logs
+
+        log_file = "bot.log"  # Overwrites on every run
+        handler = logging.FileHandler(log_file, mode='w', encoding='utf-8')  # 'w' mode replaces logs each run
+        formatter = logging.Formatter('[%(asctime)s] %(levelname)s - %(message)s')
+        handler.setFormatter(formatter)
+
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
         return logger
 
     def _setup_driver(self, headless: bool = False):
