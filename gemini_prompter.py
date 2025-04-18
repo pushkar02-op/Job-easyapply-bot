@@ -1,4 +1,4 @@
-def generate_gemini_prompt(field_label: str, input_type: str, resume_context: dict, options: list = None) -> str:
+def generate_gemini_prompt(field_label: str, input_type: str, resume_context: dict, options: list = None, validation_hint: str = "") -> str:
     """
     Builds a Gemini prompt for a field using dynamically parsed resume context.
     """
@@ -41,6 +41,8 @@ Field to Fill:
 - Label: {field_label}
 - Input Type: {input_type}
 """
+    if validation_hint:
+        prompt += f"- Validation Requirement: {validation_hint}\n"
 
     if options:
         prompt += f"- Options: {', '.join(options)}\n"

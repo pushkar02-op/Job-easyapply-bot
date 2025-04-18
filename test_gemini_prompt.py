@@ -23,7 +23,7 @@ model = create_model(
 # 3. Define some test fields (text / dropdown / radio)
 test_fields = [
     {
-        "label": "How many years of work experience do you have with Python?",
+        "label": "What's your current CTC?  The input must satisfy: Enter a decimal number larger than 0.0",
         "type": "text",
         "options": None
     }

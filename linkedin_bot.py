@@ -97,7 +97,7 @@ class LinkedInBot:
             f"&f_AL=true"            # Easy Apply
             f"&geoId=102713980"      # India geoId (adjust as needed)
         )
-        filtered_url="https://www.linkedin.com/jobs/search/?currentJobId=4211428768&keywords=Innova%20ESI%20Data%20Engineer&origin=BLENDED_SEARCH_RESULT_NAVIGATION_SEE_ALL&originToLandingJobPostings=4211428768%2C4210659792"
+        # filtered_url="https://www.linkedin.com/jobs/search/?currentJobId=4211502445&f_AL=true&geoId=102713980&keywords=Data%20Engineer%20at%20Cozzera&origin=JOB_SEARCH_PAGE_SEARCH_BUTTON&refresh=true"
         
         self.driver.get(filtered_url)
         time.sleep(5)
@@ -230,6 +230,8 @@ class LinkedInBot:
             label = field_info["label"]
             tag = field_info["tag"]
             field_type = field_info["type"]
+            validation_hint = field_info.get("validation", "")
+
 
             # —–––– Convert any WebElement options into plain text for the prompt
             raw_opts = field_info.get("options", [])
@@ -249,7 +251,9 @@ class LinkedInBot:
                     field_label=label,
                     input_type=field_type,
                     resume_context=self.resume_context,
-                    options=option_texts or None
+                    options=option_texts or None,
+                    validation_hint=validation_hint
+
                 )
                 ai_response = answer_question(self.gemini_model, context="", question=full_prompt).strip()
             except Exception as e:

@@ -1,7 +1,6 @@
 from linkedin_bot import LinkedInBot
 import os
 from dotenv import load_dotenv
-import json
 from config_loader import load_config
 
 
