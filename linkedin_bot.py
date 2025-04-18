@@ -7,13 +7,11 @@ from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from webdriver_manager.chrome import ChromeDriverManager
-import time
-import logging
 from gemini_helper import configure_api, create_model, answer_question
 from dotenv import load_dotenv
-import os
-import sys
+import os, re, time, logging
 from gemini_prompter import generate_gemini_prompt
+from job_tracker import JobTracker
 
 
 
@@ -23,6 +21,7 @@ class LinkedInBot:
         self.driver = self._setup_driver(headless)
         self.wait = WebDriverWait(self.driver, timeout)
         self.logger = self._setup_logger()
+        self.tracker = JobTracker()
         load_dotenv()
         GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
         configure_api(GEMINI_API_KEY)
@@ -134,12 +133,15 @@ class LinkedInBot:
                     company = job.find_element(By.CSS_SELECTOR, "div.artdeco-entity-lockup__subtitle span").text.strip()
                     location = job.find_element(By.CSS_SELECTOR, "ul.job-card-container__metadata-wrapper li").text.strip()
                     link = job.find_element(By.TAG_NAME, "a").get_attribute("href")
+                    match = re.search(r"/jobs/view/(\d+)", link)
+                    job_id = match.group(1) if match else None
 
                     job_cards.append({
                         "title": title,
                         "company": company,
                         "location": location,
-                        "link": link
+                        "link": link,
+                        "job_id": job_id 
                     })
 
                     self.logger.info(f"[{idx+1}] {title} at {company} — {location}")
@@ -548,6 +550,10 @@ class LinkedInBot:
 
         for idx, job in enumerate(job_cards):
             try:
+                if self.tracker.has_applied(job['job_id']):
+                    self.logger.info(f"⏭️ Already applied to: {job['title']} at {job['company']} (skipping)")
+                    continue
+            
                 self.logger.info(f"Opening job #{idx+1}: {job['title']} at {job['company']}")
                 self.driver.get(job['link'])
                 time.sleep(4)
@@ -570,6 +576,7 @@ class LinkedInBot:
                     # NEW: Handle modal
                     if not self.handle_easy_apply_modal():
                         self.logger.warning(f"⚠️ Skipped job (modal handling failed): {job['title']}")
+                    self.tracker.mark_as_applied(job['job_id'], job['title'], job['company'])
                 except Exception as click_error:
                     self.logger.warning("Standard click failed, trying JavaScript click. Error: " + str(click_error))
                     self.driver.execute_script("arguments[0].click();", easy_apply_btn)
