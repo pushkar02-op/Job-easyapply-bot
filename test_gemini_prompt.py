@@ -2,14 +2,17 @@
 
 import os
 import json
+import re
 from dotenv import load_dotenv
 from gemini_helper import configure_api, create_model, answer_question
 from gemini_prompter import generate_gemini_prompt
 
 # 1. Load config & resume context
 with open("config.json") as f:
-    config = json.load(f)
-resume_context = config  # using your structured config as context
+    raw_config = f.read()
+config_str = re.sub(r"\${(.*?)}", lambda m: os.getenv(m.group(1), ""), raw_config)
+resume_context = json.loads(config_str)
+
 
 # 2. Init Gemini
 load_dotenv()
@@ -24,7 +27,7 @@ model = create_model(
 test_fields = [
     {
         "label": "What's your current CTC?  The input must satisfy: Enter a decimal number larger than 0.0",
-        "type": "text",
+        "type": "decimal",
         "options": None
     }
 ]

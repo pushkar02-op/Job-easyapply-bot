@@ -63,9 +63,9 @@
       ]
     }
   ],
-  "notice_period": "60 days (negotiable)",
-  "current_salary": "8.06 LPA",
-  "expected_salary": "15 LPA",
+  "notice_period": "${NOTICE_PERIOD} (negotiable)",
+  "current_salary": "${CURRENT_SALARY}",
+  "expected_salary": "${EXPECTED_SALARY}",
   "relocation": "Yes",
   "location_preference": ["Bangalore", "Gurgaon", "Noida", "Pune"],
   "certification": [
